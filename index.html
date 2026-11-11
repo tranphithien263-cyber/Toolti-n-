@@ -1,0 +1,354 @@
+
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TOLLBYTHIENTRAN // DARK EDITOR</title>
+<style>
+:root {
+  --bg:#050709;
+  --panel:#0a1115;
+  --border:#123a35;
+  --green:#00ff9c;
+  --cyan:#00d9ff;
+  --text:#c8ffe9;
+  --muted:#63877b;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;background:
+  radial-gradient(ellipse at top,#10241f 0%,#050709 55%);
+  color:var(--text);font-family:Consolas,monospace;
+  min-height:100vh;padding:16px;
+}
+header{
+  border-bottom:1px solid var(--green);
+  padding:14px 4px 20px;margin-bottom:18px;
+}
+.logo{font-size:24px;font-weight:bold;color:var(--green);
+  text-shadow:0 0 15px #00ff9c77;letter-spacing:3px}
+.sub{color:var(--muted);font-size:11px;margin-top:8px}
+.panel{
+  background:#091015eF;border:1px solid var(--border);
+  border-radius:8px;padding:15px;margin-bottom:14px;
+  box-shadow:0 0 20px #00ff9c08;
+}
+h3{font-size:12px;color:var(--green);letter-spacing:2px;
+  margin:0 0 13px}
+button,input,textarea{
+  background:#050a0d;color:var(--text);
+  border:1px solid #1d5148;border-radius:5px;
+  padding:10px;font-family:Consolas,monospace;
+}
+button{cursor:pointer;font-size:12px}
+button:hover{border-color:var(--green);color:var(--green);
+  box-shadow:0 0 10px #00ff9c22}
+.primary{background:#003b2a;color:var(--green);
+  border-color:var(--green);font-weight:bold}
+input{max-width:100%;min-width:0}
+input[type=file]{width:100%;font-size:11px}
+.toolbar{display:flex;flex-wrap:wrap;gap:7px}
+.toolbar input{flex:1;min-width:110px}
+.tabs{display:flex;gap:8px;margin-bottom:12px}
+.tab{flex:1}
+.tab.active{background:#003b2a;color:var(--green);
+  border-color:var(--green)}
+#code{
+  width:100%;height:420px;resize:vertical;
+  line-height:1.6;font-size:13px;white-space:pre;
+  tab-size:2;outline:none;
+}
+#hex{
+  height:420px;overflow:auto;font-size:12px;
+  line-height:2;white-space:pre;
+}
+.hexline{display:flex;gap:12px;min-width:600px}
+.offset{color:#55766b}
+.bytes{color:var(--cyan)}
+.ascii{color:#a6ffcc}
+.byte{cursor:pointer;padding:2px}
+.byte.selected{background:var(--green);color:#00120b}
+.status{font-size:11px;color:var(--green);margin-top:12px}
+.info{font-size:11px;color:var(--muted);line-height:1.8}
+.hidden{display:none!important}
+footer{text-align:center;color:#45675d;font-size:10px;padding:18px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">TOLLBYTHIENTRAN</div>
+  <div class="sub">[ DARK SYSTEM ] // HEX & CODE EDITOR // OFFLINE MODE</div>
+</header>
+
+<section class="panel">
+  <h3>[ 01 ] LOAD FILE</h3>
+  <input type="file" id="file">
+  <div class="info" id="fileInfo">SYSTEM WAITING FOR FILE...</div>
+</section>
+
+<section class="panel">
+  <h3>[ 02 ] EDITOR</h3>
+  <div class="tabs">
+    <button class="tab active" id="codeTab" onclick="switchTab('code')">CODE VIEW</button>
+    <button class="tab" id="hexTab" onclick="switchTab('hex')">HEX VIEW</button>
+  </div>
+
+  <div id="codePanel">
+    <textarea id="code" spellcheck="false"
+      placeholder="File text will appear here..."></textarea>
+  </div>
+  <div id="hexPanel" class="hidden">
+    <div id="hex">WAITING FOR FILE...</div>
+  </div>
+  <div class="info" id="editorInfo">
+    CODE VIEW displays readable UTF-8 text.
+  </div>
+</section>
+
+<section class="panel">
+  <h3>[ 03 ] SEARCH / REPLACE</h3>
+  <div class="toolbar">
+    <input id="find" placeholder="Search text...">
+    <input id="replacement" placeholder="Replace with...">
+    <button onclick="findText()">FIND</button>
+    <button onclick="replaceText()">REPLACE ALL</button>
+  </div>
+</section>
+
+<section class="panel">
+  <h3>[ 04 ] HEX CONTROL</h3>
+  <div class="toolbar">
+    <input id="offset" placeholder="Byte offset">
+    <input id="byteValue" placeholder="New HEX byte">
+    <button onclick="editByte()">WRITE BYTE</button>
+  </div>
+  <div class="toolbar" style="margin-top:9px">
+    <button onclick="undo()">UNDO</button>
+    <button onclick="redo()">REDO</button>
+    <button onclick="refresh()">REFRESH VIEW</button>
+  </div>
+  <div class="info">Selected byte: <span id="selected">NONE</span></div>
+</section>
+
+<section class="panel">
+  <h3>[ 05 ] EXPORT</h3>
+  <div class="toolbar">
+    <input id="filename" placeholder="edited_file.bin"
+      value="TOLLBYTHIENTRAN_edited.bin">
+    <button class="primary" onclick="downloadFile()">DOWNLOAD FILE</button>
+  </div>
+  <div class="status" id="status">● SYSTEM READY</div>
+</section>
+
+<footer>
+  TOLLBYTHIENTRAN // LOCAL FILE EDITOR // NO UPLOAD REQUIRED
+</footer>
+
+<script>
+let originalName="edited_file.bin";
+let bytes=null;
+let selected=0;
+let history=[];
+let future=[];
+let currentTab="code";
+let codeDirty=false;
+
+const $=id=>document.getElementById(id);
+
+function status(s){$("status").textContent="● "+s}
+
+function saveHistory(){
+  if(!bytes)return;
+  history.push(bytes.slice());
+  if(history.length>40)history.shift();
+  future=[];
+}
+
+$("file").addEventListener("change",async e=>{
+  const f=e.target.files[0];
+  if(!f)return;
+  bytes=new Uint8Array(await f.arrayBuffer());
+  originalName=f.name;
+  selected=0;
+  history=[];future=[];
+  $("filename").value="TOLLBYTHIENTRAN_edited_"+f.name;
+  $("fileInfo").textContent=
+    "FILE: "+f.name+" | SIZE: "+bytes.length+" BYTES";
+  $("code").value=decodeText(bytes);
+  codeDirty=false;
+  renderHex();
+  status("FILE LOADED SUCCESSFULLY");
+});
+
+function decodeText(data){
+  try{
+    return new TextDecoder("utf-8",{fatal:true}).decode(data);
+  }catch(e){
+    return "/* This file contains binary or invalid UTF-8 data.\n"+
+      "Use HEX VIEW to inspect and edit its bytes.\n"+
+      "Binary data is not automatically converted into source code. */";
+  }
+}
+
+function switchTab(tab){
+  if(!bytes)return status("LOAD A FILE FIRST");
+  if(currentTab==="code" && tab==="hex" && codeDirty){
+    if(!confirm("Apply your CODE VIEW changes before switching to HEX VIEW?"))
+      return;
+    applyCode();
+  }
+  if(tab==="code" && currentTab==="hex"){
+    $("code").value=decodeText(bytes);
+    codeDirty=false;
+  }
+  currentTab=tab;
+  $("codePanel").classList.toggle("hidden",tab!=="code");
+  $("hexPanel").classList.toggle("hidden",tab!=="hex");
+  $("codeTab").classList.toggle("active",tab==="code");
+  $("hexTab").classList.toggle("active",tab==="hex");
+  $("editorInfo").textContent=tab==="code"
+    ?"Edit readable UTF-8 text, then export."
+    :"Select a byte to inspect its HEX value.";
+  if(tab==="hex")renderHex();
+}
+
+$("code").addEventListener("input",()=>{codeDirty=true});
+
+function applyCode(){
+  if(!bytes)return;
+  saveHistory();
+  bytes=new TextEncoder().encode($("code").value);
+  codeDirty=false;
+  renderHex();
+  status("TEXT CHANGES APPLIED");
+}
+
+function renderHex(){
+  if(!bytes)return;
+  let html="";
+  const max=Math.min(bytes.length,4096);
+  for(let i=0;i<max;i+=16){
+    let h="",a="";
+    for(let j=i;j<Math.min(i+16,max);j++){
+      const b=bytes[j];
+      h+=`<span class="byte ${j===selected?'selected':''}"
+        onclick="selectByte(${j})">${b.toString(16).padStart(2,"0").toUpperCase()}</span> `;
+      a+=b>=32&&b<=126?String.fromCharCode(b):".";
+    }
+    html+=`<div class="hexline">
+      <span class="offset">${i.toString(16).padStart(8,"0")}</span>
+      <span class="bytes">${h}</span>
+      <span class="ascii">${a}</span>
+    </div>`;
+  }
+  if(bytes.length>max)html+=
+    `<div class="info">Preview limited to first ${max} bytes. Full file remains intact.</div>`;
+  $("hex").innerHTML=html;
+  $("selected").textContent="0x"+selected.toString(16).toUpperCase();
+}
+
+function selectByte(i){
+  selected=i;
+  $("offset").value="0x"+i.toString(16);
+  $("byteValue").value=bytes[i].toString(16).padStart(2,"0").toUpperCase();
+  renderHex();
+}
+
+function editByte(){
+  if(!bytes)return;
+  let p=$("offset").value.trim();
+  let n=p.toLowerCase().startsWith("0x")?
+    parseInt(p,16):Number(p);
+  let v=$("byteValue").value.trim();
+  if(!Number.isInteger(n)||n<0||n>=bytes.length||
+     !/^[0-9a-fA-F]{2}$/.test(v))
+    return status("INVALID OFFSET OR HEX VALUE");
+  saveHistory();
+  bytes[n]=parseInt(v,16);
+  selected=n;
+  renderHex();
+  status("BYTE UPDATED AT "+n);
+}
+
+function findText(){
+  if(!bytes)return;
+  const q=new TextEncoder().encode($("find").value);
+  if(!q.length)return;
+  outer:for(let i=0;i<=bytes.length-q.length;i++){
+    for(let j=0;j<q.length;j++)
+      if(bytes[i+j]!==q[j])continue outer;
+    selected=i;
+    switchTab("hex");
+    renderHex();
+    return status("FOUND AT OFFSET "+i);
+  }
+  status("TEXT NOT FOUND");
+}
+
+function replaceText(){
+  if(!bytes)return;
+  const q=new TextEncoder().encode($("find").value);
+  const r=new TextEncoder().encode($("replacement").value);
+  if(!q.length||q.length!==r.length)
+    return status("USE REPLACEMENT WITH SAME BYTE LENGTH");
+  const hits=[];
+  outer:for(let i=0;i<=bytes.length-q.length;i++){
+    for(let j=0;j<q.length;j++)
+      if(bytes[i+j]!==q[j])continue outer;
+    hits.push(i);i+=q.length-1;
+  }
+  if(!hits.length)return status("NO MATCHES");
+  saveHistory();
+  hits.forEach(i=>bytes.set(r,i));
+  selected=hits[0];
+  $("code").value=decodeText(bytes);
+  codeDirty=false;
+  renderHex();
+  status(hits.length+" MATCHES REPLACED");
+}
+
+function undo(){
+  if(!history.length)return;
+  future.push(bytes.slice());
+  bytes=history.pop();
+  $("code").value=decodeText(bytes);
+  codeDirty=false;
+  renderHex();
+  status("UNDO COMPLETE");
+}
+
+function redo(){
+  if(!future.length)return;
+  history.push(bytes.slice());
+  bytes=future.pop();
+  $("code").value=decodeText(bytes);
+  codeDirty=false;
+  renderHex();
+  status("REDO COMPLETE");
+}
+
+function refresh(){
+  if(!bytes)return;
+  if(currentTab==="code"){
+    if(!codeDirty)$("code").value=decodeText(bytes);
+  }else renderHex();
+  status("VIEW REFRESHED");
+}
+
+function downloadFile(){
+  if(!bytes)return status("NO FILE LOADED");
+  if(currentTab==="code"&&codeDirty)applyCode();
+  const blob=new Blob([bytes],{type:"application/octet-stream"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;
+  a.download=$("filename").value.trim()||"edited_file.bin";
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  status("DOWNLOAD STARTED");
+}
+</script>
+</body>
+</html>
